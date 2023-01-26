@@ -1,0 +1,22 @@
+name: Additional tests
+
+on: [push]
+
+jobs:
+  build:
+    name: test
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: test_concurrent_no_sharing
+        run: |
+          python3 tests/test_concurrent_no_sharing.py
+
+      - name: test_concurrent_no_sharing
+        run: |
+          python3 tests/test_concurrent_shared_small.py
+
+      - name: test_concurrent_no_sharing
+        run: |
+          python3 tests/test_concurrent_shared_big.py

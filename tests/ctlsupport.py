@@ -40,7 +40,7 @@ class ctl_response:
         Value:  OK
     """
 
-    def __init__(self, msg: str, kvps: "dict[str, str]"):
+    def __init__(self, msg: str, kvps: dict[str, str]):
         self.msg = msg
         self.kvps = kvps
 
@@ -50,16 +50,16 @@ class ctl_response:
     @classmethod
     def parse(cls, input: str):
         kvps = {}
-        lines = list(filter(lambda l: l.startswith("Key:") or l.startswith("Value:"),
-                            input.split("\n")))
-        msg = list(filter(lambda l: l.startswith("Msg:"), input.split("\n")))
-        msg = msg[0] if len(msg) > 0 else ""
+        lines = input.split("\n")
+        lines_kv = list(filter(lambda l: l.startswith("Key:") or l.startswith("Value:"), lines))
+        msg = list(filter(lambda l: l.startswith("Msg:"), lines))
+        msg = msg[0][4:].strip() if len(msg) > 0 else ""
 
         if len(lines) < 1:
             raise InvalidResponseException("No response found")
 
         try:
-            it = iter(lines)
+            it = iter(lines_kv)
             for k, v in zip(it, it):
                 name, key = map(lambda s: s.strip(), k.split(":"))
                 if name != "Key":

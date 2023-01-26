@@ -82,6 +82,10 @@ Make sure these locks are released after a transaction commit or abort.
 
 ## Tests
 
+For your implementation to be able to pass these tests, the client executable should print out the following messages after receiving a response to a corresponding `tx_commit` request:
+- **OK** if the associated transaction has been successfully committed.
+- **ERROR** if the associated transaction has failed or been aborted.
+
 ### Test 4.1: Correct operation of 2PC
 
 We initialise KVS keys with values.
@@ -129,6 +133,41 @@ We check that the keys hold the initialization values.
 To execute this test independently, run:
 ```
 python3 tests/test_transaction_abort.py
+```
+
+### Test 4.5: Concurrent transaction on non shared keys
+
+We concurrently perform 10k transactions on 30k non shared keys, using 4 threads.
+Each transaction modifies 3 keys.
+In the end, we check for the expected results.
+
+Make sure this test resides in project `tests` folder
+To execute this test, run:
+```
+python3 tests/test_concurrent_no_sharing.py
+```
+
+### Test 4.6: Concurrent transaction on shared keys (small data set)
+
+We concurrently perform 100k transactions on 1k non shared keys, using 2 threads.
+Each transaction modifies gets and increments the value of the key, treating it like a shared counter.
+In the end, we check for the expected total increments.
+
+Make sure this test resides in project `tests` folder
+To execute this test, run:
+```
+python3 tests/test_concurrent_shared_small.py
+```
+
+### Test 4.7: Concurrent transaction on shared keys (big data set)
+
+We concurrently perform 500k transactions on 10k non shared keys, using 4 threads.
+Description same as test 4.6.
+
+Make sure this test resides in project `tests` folder
+To execute this test, run:
+```
+python3 tests/test_concurrent_shared_big.py
 ```
 
 ## Build Instructions
