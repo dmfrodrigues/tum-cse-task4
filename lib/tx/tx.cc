@@ -10,6 +10,8 @@
 #include <vector>
 #include <fmt/core.h>
 
+using namespace std;
+
 namespace cloudlab {
 
 auto TXManager::GetTransactionPairs(const MessageHelper& msg,
@@ -98,33 +100,127 @@ auto TXManager::HandleMessage(const cloud::CloudMessage& request,
 
 auto TXManager::HandleBeginCoordinator(const cloud::CloudMessage& request,
                                        cloud::CloudMessage& response) -> void {
-  // TODO(you)
   std::cout << "TXManager::HandleBeginCoordinator\n";
+
+  const string tx_id = request.tx_id();
+  KVS &kvs = *(*partitions)[0];
+
+  auto ret = kvs.tx_begin(tx_id);
+
+  response.set_type(cloud::CloudMessage_Type_RESPONSE);
+  response.set_operation(request.operation());
+  response.set_success(get<0>(ret));
+  response.set_message(get<1>(ret));
 }
 auto TXManager::HandleCommitCoordinator(const cloud::CloudMessage& request,
                                         cloud::CloudMessage& response) -> void {
-  // TODO(you)
   std::cout << "TXManager::HandleCommitCoordinator\n";
+
+  const string tx_id = request.tx_id();
+  KVS &kvs = *(*partitions)[0];
+
+  auto ret = kvs.tx_commit(tx_id);
+
+  response.set_type(cloud::CloudMessage_Type_RESPONSE);
+  response.set_operation(request.operation());
+  response.set_success(get<0>(ret));
+  response.set_message(get<1>(ret));
 }
 auto TXManager::HandleAbortCoordinator(const cloud::CloudMessage& request,
                                        cloud::CloudMessage& response) -> void {
-  // TODO(you)
   std::cout << "TXManager::HandleAbortCoordinator\n";
+
+  const string tx_id = request.tx_id();
+  KVS &kvs = *(*partitions)[0];
+
+  auto ret = kvs.tx_abort(tx_id);
+
+  response.set_type(cloud::CloudMessage_Type_RESPONSE);
+  response.set_operation(request.operation());
+  response.set_success(get<0>(ret));
+  response.set_message(get<1>(ret));
 }
 auto TXManager::HandleGetCoordinator(const cloud::CloudMessage& request,
                                      cloud::CloudMessage& response) -> void {
-  // TODO(you)
   std::cout << "TXManager::HandleGetCoordinator\n";
+
+  const string tx_id = request.tx_id();
+  KVS &kvs = *(*partitions)[0];
+
+  bool success = true;
+
+  for(const auto &p: request.kvp()){
+    const string key = p.key();
+    string value;
+    auto ret = kvs.tx_get(tx_id, key, value);
+    if(!get<0>(ret)){
+      success = false;
+      value = "ERROR";
+    }
+    auto response_kvp = response.add_kvp();
+    response_kvp->set_key(key);
+    response_kvp->set_value(value);
+  }
+
+  response.set_type(cloud::CloudMessage_Type_RESPONSE);
+  response.set_operation(request.operation());
+  response.set_success(success);
+  response.set_message(success ? "OK" : "ERROR");
 }
 auto TXManager::HandlePutCoordinator(const cloud::CloudMessage& request,
                                      cloud::CloudMessage& response) -> void {
-  // TODO(you)
   std::cout << "TXManager::HandlePutCoordinator\n";
+
+  const string tx_id = request.tx_id();
+  KVS &kvs = *(*partitions)[0];
+
+  bool success = true;
+
+  for(const auto &p: request.kvp()){
+    const string key = p.key();
+    const string value = p.value();
+    string result = "OK";
+    auto ret = kvs.tx_put(tx_id, key, value);
+    if(!get<0>(ret)){
+      success = false;
+      result = "ERROR";
+    }
+    auto response_kvp = response.add_kvp();
+    response_kvp->set_key(key);
+    response_kvp->set_value(result);
+  }
+
+  response.set_type(cloud::CloudMessage_Type_RESPONSE);
+  response.set_operation(request.operation());
+  response.set_success(success);
+  response.set_message(success ? "OK" : "ERROR");
 }
 auto TXManager::HandleDeleteCoordinator(const cloud::CloudMessage& request,
                                         cloud::CloudMessage& response) -> void {
-  // TODO(you)
   std::cout << "TXManager::HandleDeleteCoordinator\n";
+
+  const string tx_id = request.tx_id();
+  KVS &kvs = *(*partitions)[0];
+
+  bool success = true;
+
+  for(const auto &p: request.kvp()){
+    const string key = p.key();
+    string result = "OK";
+    auto ret = kvs.tx_del(tx_id, key);
+    if(!get<0>(ret)){
+      success = false;
+      result = "ERROR";
+    }
+    auto response_kvp = response.add_kvp();
+    response_kvp->set_key(key);
+    response_kvp->set_value(result);
+  }
+
+  response.set_type(cloud::CloudMessage_Type_RESPONSE);
+  response.set_operation(request.operation());
+  response.set_success(success);
+  response.set_message(success ? "OK" : "ERROR");
 }
 auto TXManager::HandleBeginParticipant(const cloud::CloudMessage& request,
                                        cloud::CloudMessage& response) -> void {
