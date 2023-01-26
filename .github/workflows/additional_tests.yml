@@ -9,6 +9,11 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: compile
+        run: |
+          mkdir -p build
+          cd build && cmake .. && make
+
       - name: test_concurrent_no_sharing
         run: |
           python3 tests/test_concurrent_no_sharing.py
