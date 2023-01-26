@@ -64,38 +64,47 @@ auto KVS::clear() -> bool {
 }
 
 auto KVS::tx_begin(const std::string& txId) -> std::tuple<bool, std::string> {
-  // TODO(you)
-  return {false, "ERROR"};
-  // return {true, "OK"}
+  if(transactions.count(txId)) return {false, "ERROR"};
+  rocksdb::WriteOptions options;
+  rocksdb::TransactionOptions txOptions{};
+  auto tx = db->BeginTransaction(rocksdb::WriteOptions(), txOptions);
+  if(!tx) return {false, "ERROR"};
+  transactions[txId] = tx;
+  return {true, "OK"};
 }
 
 auto KVS::tx_commit(const std::string& txId) -> std::tuple<bool, std::string> {
-  // TODO(you)
-  return {false, "ERROR"};
-  // return {true, "OK"}
+  if(!transactions.count(txId)) return {false, "ERROR"};
+  if(!transactions.at(txId)->Commit().ok()) return {false, "ERROR"};
+  delete transactions[txId];
+  transactions.erase(txId);
+  return {true, "OK"};
 }
 auto KVS::tx_abort(const std::string& txId) -> std::tuple<bool, std::string> {
-  // TODO(you)
-  return {false, "ERROR"};
-  // return {true, "OK"}
+  // TODO(you): check if aborting a RocksDB transaction does not require
+  // something else other than just deleting the transaction.
+  if(!transactions.count(txId)) return {false, "ERROR"};
+  delete transactions.at(txId);
+  transactions.erase(txId);
+  return {true, "OK"};
 }
 auto KVS::tx_get(const std::string& txId, const std::string& key,
                  std::string& result) -> std::tuple<bool, std::string> {
-  // TODO(you)
-  return {false, "ERROR"};
-  // return {true, "OK"}
+  if(!transactions.count(txId)) return {false, "ERROR"};
+  if(!transactions.at(txId)->Get(rocksdb::ReadOptions(), key, &result).ok()) return {false, "ERROR"};
+  return {true, "OK"};
 }
 auto KVS::tx_put(const std::string& txId, const std::string& key,
                  const std::string& value) -> std::tuple<bool, std::string> {
-  // TODO(you)
-  return {false, "ERROR"};
-  // return {true, "OK"}
+  if(!transactions.count(txId)) return {false, "ERROR"};
+  if(!transactions.at(txId)->Put(key, value).ok()) return {false, "ERROR"};
+  return {true, "OK"};
 }
 auto KVS::tx_del(const std::string& txId, const std::string& key)
     -> std::tuple<bool, std::string> {
-  // TODO(you)
-  return {false, "ERROR"};
-  // return {true, "OK"}
+  if(!transactions.count(txId)) return {false, "ERROR"};
+  if(!transactions.at(txId)->Delete(key).ok()) return {false, "ERROR"};
+  return {true, "OK"};
 }
 
 }  // namespace cloudlab
