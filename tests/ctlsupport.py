@@ -40,7 +40,7 @@ class ctl_response:
         Value:  OK
     """
 
-    def __init__(self, msg: str, kvps: dict[str, str]):
+    def __init__(self, msg: str, kvps: "dict[str, str]"):
         self.msg = msg
         self.kvps = kvps
 
