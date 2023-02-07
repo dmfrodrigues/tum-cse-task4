@@ -80,9 +80,12 @@ class TXManager {
   auto GetRole() -> TXRole {
     return role;
   }
+
+public:
   auto IsCoordinator() -> bool {
     return GetRole() == TXRole::COORDINATOR;
   }
+private:
 
   RoutingPtr routing{};
   PartitionsPtr partitions{};
