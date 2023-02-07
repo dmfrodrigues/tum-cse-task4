@@ -74,23 +74,23 @@ auto KVS::tx_begin(const std::string& txId) -> std::tuple<bool, std::string> {
 }
 
 auto KVS::tx_commit(const std::string& txId) -> std::tuple<bool, std::string> {
-  if(!transactions.count(txId)) return {false, "ERROR"};
+  if(!transactions.count(txId) || transactions.at(txId) == nullptr) return {false, "ERROR"};
   if(!transactions.at(txId)->Commit().ok()) return {false, "ERROR"};
   delete transactions[txId];
-  transactions.erase(txId);
+  transactions.at(txId) = nullptr;
   return {true, "OK"};
 }
 auto KVS::tx_abort(const std::string& txId) -> std::tuple<bool, std::string> {
-  if(!transactions.count(txId)) return {false, "ERROR"};
+  if(!transactions.count(txId) || transactions.at(txId) == nullptr) return {false, "ERROR"};
   transactions.at(txId)->Rollback();
   delete transactions.at(txId);
-  transactions.erase(txId);
+  transactions.at(txId) = nullptr;
   return {true, "OK"};
 }
 auto KVS::tx_get(const std::string& txId, const std::string& key,
                  std::string& result) -> std::tuple<bool, std::string> {
-  if(!transactions.count(txId)) return {false, "ERROR"};
-  if(!transactions.at(txId)->GetForUpdate(rocksdb::ReadOptions(), key, &result).ok()) return {false, "ERROR"};
+  if(!transactions.count(txId)){ std::cerr << "tx_get FAILED AT POINT 1" << std::endl; return {false, "ERROR"}; }
+  if(!transactions.at(txId)->GetForUpdate(rocksdb::ReadOptions(), key, &result).ok()){ std::cerr << "tx_get FAILED AT POINT 2" << std::endl; return {false, "ERROR"}; }
   return {true, "OK"};
 }
 auto KVS::tx_put(const std::string& txId, const std::string& key,
