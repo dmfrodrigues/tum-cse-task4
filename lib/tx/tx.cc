@@ -103,18 +103,24 @@ auto TXManager::HandleBeginCoordinator(const cloud::CloudMessage& request,
                                        cloud::CloudMessage& response) -> void {
   std::cout << "TXManager::HandleBeginCoordinator\n";
 
-  // Send BEGIN TX to all involved peers
+  const string tx_id = request.tx_id();
+
+  assert(transactionKeysMap[tx_id].size() == 0);
+
   map<SocketAddress, list<string>> keysPerPeer;
   for(const auto &kvp: request.kvp()){
     SocketAddress peerAddress = routing->find_peer(kvp.key()).value();
     keysPerPeer[peerAddress].push_back(kvp.key());
+    transactionKeysMap[tx_id].insert(kvp.key());
   }
+  bool success = true;
   for(const auto &p: keysPerPeer){
     const SocketAddress &peerAddress = p.first;
     
     cloud::CloudMessage msg{};
     msg.set_type(cloud::CloudMessage_Type_REQUEST);
     msg.set_operation(cloud::CloudMessage_Operation_TX_BEGIN);
+    msg.set_tx_id(tx_id);
 
     for(const string &key: p.second){
       auto *tmp = msg.add_kvp();
@@ -127,54 +133,268 @@ auto TXManager::HandleBeginCoordinator(const cloud::CloudMessage& request,
     cloud::CloudMessage response{};
     con.receive(response);
 
-    assert(response.success());
-    assert(response.message() == "OK");
+    success &= response.success();
   }
 
   response.set_type(cloud::CloudMessage_Type_RESPONSE);
   response.set_operation(request.operation());
-  response.set_success(true);
-  response.set_message("OK");
+  response.set_success(success);
+  response.set_message(success ? "OK" : "ERROR");
 }
 auto TXManager::HandleCommitCoordinator(const cloud::CloudMessage& request,
                                         cloud::CloudMessage& response) -> void {
   std::cout << "TXManager::HandleCommitCoordinator\n";
 
   const string tx_id = request.tx_id();
-  KVS &kvs = *(*partitions)[0];
 
-  auto ret = kvs.tx_commit(tx_id);
+  set<SocketAddress> peers;
+  for(const string &key: transactionKeysMap.at(tx_id)){
+    peers.insert(routing->find_peer(key).value());
+  }
+  bool success = true;
+  for(const SocketAddress &peerAddress: peers){    
+    cloud::CloudMessage msg{};
+    msg.set_type(cloud::CloudMessage_Type_REQUEST);
+    msg.set_operation(cloud::CloudMessage_Operation_TX_COMMIT);
+    msg.set_tx_id(tx_id);
+
+    Connection con{peerAddress};
+    con.send(msg);
+
+    cloud::CloudMessage response{};
+    con.receive(response);
+
+    success &= response.success();
+  }
+
+  transactionKeysMap.erase(tx_id);
 
   response.set_type(cloud::CloudMessage_Type_RESPONSE);
   response.set_operation(request.operation());
-  response.set_success(get<0>(ret));
-  response.set_message(get<1>(ret));
+  response.set_success(success);
+  response.set_message(success ? "OK" : "ERROR");
 }
 auto TXManager::HandleAbortCoordinator(const cloud::CloudMessage& request,
                                        cloud::CloudMessage& response) -> void {
   std::cout << "TXManager::HandleAbortCoordinator\n";
 
   const string tx_id = request.tx_id();
-  KVS &kvs = *(*partitions)[0];
 
-  auto ret = kvs.tx_abort(tx_id);
+  set<SocketAddress> peers;
+  for(const string &key: transactionKeysMap.at(tx_id)){
+    peers.insert(routing->find_peer(key).value());
+  }
+  bool success = true;
+  for(const SocketAddress &peerAddress: peers){    
+    cloud::CloudMessage msg{};
+    msg.set_type(cloud::CloudMessage_Type_REQUEST);
+    msg.set_operation(cloud::CloudMessage_Operation_TX_ABORT);
+    msg.set_tx_id(tx_id);
+
+    Connection con{peerAddress};
+    con.send(msg);
+
+    cloud::CloudMessage response{};
+    con.receive(response);
+
+    success &= response.success();
+  }
+
+  transactionKeysMap.erase(tx_id);
 
   response.set_type(cloud::CloudMessage_Type_RESPONSE);
   response.set_operation(request.operation());
-  response.set_success(get<0>(ret));
-  response.set_message(get<1>(ret));
+  response.set_success(success);
+  response.set_message(success ? "OK" : "ERROR");
 }
 auto TXManager::HandleGetCoordinator(const cloud::CloudMessage& request,
                                      cloud::CloudMessage& response) -> void {
   std::cout << "TXManager::HandleGetCoordinator\n";
 
   const string tx_id = request.tx_id();
-  KVS &kvs = *(*partitions)[0];
+
+  response.set_type(cloud::CloudMessage_Type_RESPONSE);
+  response.set_operation(request.operation());
+  response.set_success(true);
+  response.set_message("OK");
+
+  for(const auto &kvp: request.kvp()){
+    const string &key = kvp.key();
+    SocketAddress peerAddress = routing->find_peer(key).value();
+
+    cloud::CloudMessage msg{};
+    msg.set_type(request.type());
+    msg.set_operation(cloud::CloudMessage_Operation_TX_GET);
+    msg.set_tx_id(tx_id);
+    msg.add_kvp()->set_key(key);
+
+    Connection con{peerAddress};
+    con.send(msg);
+
+    cloud::CloudMessage resp{};
+    con.receive(resp);
+
+    if(!resp.success()){
+      response.set_success(false);
+      response.set_message("ERROR");
+      auto *tmp = response.add_kvp();
+      tmp->set_key(key);
+      tmp->set_value("ERROR");
+    } else {
+      for(const auto &kvp2: resp.kvp()){
+        auto *tmp = response.add_kvp();
+        tmp->set_key(kvp2.key());
+        tmp->set_value(kvp2.value());
+      }
+    }
+  }
+}
+auto TXManager::HandlePutCoordinator(const cloud::CloudMessage& request,
+                                     cloud::CloudMessage& response) -> void {
+  std::cout << "TXManager::HandlePutCoordinator\n";
+
+  const string tx_id = request.tx_id();
+
+  response.set_type(cloud::CloudMessage_Type_RESPONSE);
+  response.set_operation(request.operation());
+  response.set_success(true);
+  response.set_message("OK");
+
+  for(const auto &kvp: request.kvp()){
+    const string &key = kvp.key();
+    SocketAddress peerAddress = routing->find_peer(key).value();
+
+    const string &value = kvp.value();
+
+    cloud::CloudMessage msg{};
+    msg.set_type(request.type());
+    msg.set_operation(cloud::CloudMessage_Operation_TX_PUT);
+    msg.set_tx_id(tx_id);
+    auto tmp = msg.add_kvp();
+    tmp->set_key(key);
+    tmp->set_value(value);
+
+    Connection con{peerAddress};
+    con.send(msg);
+
+    cloud::CloudMessage resp{};
+    con.receive(resp);
+
+    for(const auto &kvp2: resp.kvp()){
+      auto tmp = response.add_kvp();
+      tmp->set_key(kvp2.key());
+      tmp->set_value(kvp2.value());
+    }
+    if(!resp.success())
+      response.set_success(false);
+  }
+}
+auto TXManager::HandleDeleteCoordinator(const cloud::CloudMessage& request,
+                                        cloud::CloudMessage& response) -> void {
+  std::cout << "TXManager::HandleDeleteCoordinator\n";
+
+  const string tx_id = request.tx_id();
+
+  response.set_type(cloud::CloudMessage_Type_RESPONSE);
+  response.set_operation(request.operation());
+  response.set_success(true);
+  response.set_message("OK");
+
+  for(const auto &kvp: request.kvp()){
+    const string &key = kvp.key();
+    SocketAddress peerAddress = routing->find_peer(key).value();
+
+    cloud::CloudMessage msg{};
+    msg.set_type(request.type());
+    msg.set_operation(cloud::CloudMessage_Operation_TX_DELETE);
+    msg.set_tx_id(tx_id);
+    auto tmp = msg.add_kvp();
+    tmp->set_key(key);
+
+    Connection con{peerAddress};
+    con.send(msg);
+
+    cloud::CloudMessage resp{};
+    con.receive(resp);
+
+    for(const auto &kvp2: resp.kvp()){
+      auto tmp = response.add_kvp();
+      tmp->set_key(kvp2.key());
+      tmp->set_value(kvp2.value());
+    }
+    if(!resp.success())
+      response.set_success(false);
+  }
+}
+auto TXManager::HandleBeginParticipant(const cloud::CloudMessage& request,
+                                       cloud::CloudMessage& response) -> void {
+  std::cout << "TXManager::HandleBeginParticipant\n";
+
+  const string tx_id = request.tx_id();
+
+  assert(transactionKeysMap[tx_id].size() == 0);
+
+  set<uint32_t> selectedPartitions;
+  for(const auto &p: request.kvp()){
+    const string key = p.key();
+    transactionKeysMap[tx_id].insert(key);
+
+    selectedPartitions.insert(routing->get_partition(key));
+  }
+  bool success = true;
+  for(const int &partitionId: selectedPartitions){
+    KVS &kvs = *partitions->at(partitionId).get();
+    auto ret = kvs.tx_begin(tx_id);
+    success &= get<0>(ret);
+  }
+
+  response.set_type(cloud::CloudMessage_Type_RESPONSE);
+  response.set_operation(request.operation());
+  response.set_success(success);
+  response.set_message(success ? "OK" : "ERROR");
+}
+auto TXManager::HandleCommitParticipant(const cloud::CloudMessage& request,
+                                        cloud::CloudMessage& response) -> void {
+  std::cout << "TXManager::HandleCommitParticipant\n";
+
+  const string tx_id = request.tx_id();
+
+  set<uint32_t> selectedPartitions;
+  for(const string &key: transactionKeysMap.at(tx_id)){
+    selectedPartitions.insert(routing->get_partition(key));
+  }
+  bool success = true;
+  for(const int &partitionId: selectedPartitions){
+    KVS &kvs = *partitions->at(partitionId).get();
+    auto ret = kvs.tx_commit(tx_id);
+    success &= get<0>(ret);
+  }
+
+  transactionKeysMap.erase(tx_id);
+
+  response.set_type(cloud::CloudMessage_Type_RESPONSE);
+  response.set_operation(request.operation());
+  response.set_success(success);
+  response.set_message(success ? "OK" : "ERROR");
+}
+auto TXManager::HandleAbortParticipant(const cloud::CloudMessage& request,
+                                       cloud::CloudMessage& response) -> void {
+  // TODO(you)
+  std::cout << "TXManager::HandleAbortParticipant\n";
+}
+auto TXManager::HandleGetParticipant(const cloud::CloudMessage& request,
+                                     cloud::CloudMessage& response) -> void {
+  std::cout << "TXManager::HandleGetParticipant\n";
+
+  const string tx_id = request.tx_id();
 
   bool success = true;
 
   for(const auto &p: request.kvp()){
     const string key = p.key();
+
+    KVS &kvs = *partitions->at(routing->get_partition(key));
+
     string value;
     auto ret = kvs.tx_get(tx_id, key, value);
     if(!get<0>(ret)){
@@ -191,27 +411,27 @@ auto TXManager::HandleGetCoordinator(const cloud::CloudMessage& request,
   response.set_success(success);
   response.set_message(success ? "OK" : "ERROR");
 }
-auto TXManager::HandlePutCoordinator(const cloud::CloudMessage& request,
+auto TXManager::HandlePutParticipant(const cloud::CloudMessage& request,
                                      cloud::CloudMessage& response) -> void {
-  std::cout << "TXManager::HandlePutCoordinator\n";
+  std::cout << "TXManager::HandlePutParticipant\n";
 
   const string tx_id = request.tx_id();
-  KVS &kvs = *(*partitions)[0];
 
   bool success = true;
 
   for(const auto &p: request.kvp()){
     const string key = p.key();
     const string value = p.value();
-    string result = "OK";
+
+    KVS &kvs = *partitions->at(routing->get_partition(key));
+
     auto ret = kvs.tx_put(tx_id, key, value);
-    if(!get<0>(ret)){
-      success = false;
-      result = "ERROR";
-    }
     auto response_kvp = response.add_kvp();
     response_kvp->set_key(key);
-    response_kvp->set_value(result);
+    if(!get<0>(ret)){
+      success = false;
+    }
+    response_kvp->set_value(get<1>(ret));
   }
 
   response.set_type(cloud::CloudMessage_Type_RESPONSE);
@@ -219,71 +439,33 @@ auto TXManager::HandlePutCoordinator(const cloud::CloudMessage& request,
   response.set_success(success);
   response.set_message(success ? "OK" : "ERROR");
 }
-auto TXManager::HandleDeleteCoordinator(const cloud::CloudMessage& request,
+auto TXManager::HandleDeleteParticipant(const cloud::CloudMessage& request,
                                         cloud::CloudMessage& response) -> void {
-  std::cout << "TXManager::HandleDeleteCoordinator\n";
+  std::cout << "TXManager::HandleDeleteParticipant\n";
 
   const string tx_id = request.tx_id();
-  KVS &kvs = *(*partitions)[0];
 
   bool success = true;
 
   for(const auto &p: request.kvp()){
     const string key = p.key();
-    string result = "OK";
+    const string value = p.value();
+
+    KVS &kvs = *partitions->at(routing->get_partition(key));
+
     auto ret = kvs.tx_del(tx_id, key);
-    if(!get<0>(ret)){
-      success = false;
-      result = "ERROR";
-    }
     auto response_kvp = response.add_kvp();
     response_kvp->set_key(key);
-    response_kvp->set_value(result);
+    if(!get<0>(ret)){
+      success = false;
+    }
+    response_kvp->set_value(get<1>(ret));
   }
 
   response.set_type(cloud::CloudMessage_Type_RESPONSE);
   response.set_operation(request.operation());
   response.set_success(success);
   response.set_message(success ? "OK" : "ERROR");
-}
-auto TXManager::HandleBeginParticipant(const cloud::CloudMessage& request,
-                                       cloud::CloudMessage& response) -> void {
-  std::cout << "TXManager::HandleBeginParticipant\n";
-
-  const string tx_id = request.tx_id();
-  KVS &kvs = *(*partitions)[0];
-
-  auto ret = kvs.tx_begin(tx_id);
-
-  response.set_type(cloud::CloudMessage_Type_RESPONSE);
-  response.set_operation(request.operation());
-  response.set_success(get<0>(ret));
-  response.set_message(get<1>(ret));
-}
-auto TXManager::HandleCommitParticipant(const cloud::CloudMessage& request,
-                                        cloud::CloudMessage& response) -> void {
-  // TODO(you)
-  std::cout << "TXManager::HandleCommitParticipant\n";
-}
-auto TXManager::HandleAbortParticipant(const cloud::CloudMessage& request,
-                                       cloud::CloudMessage& response) -> void {
-  // TODO(you)
-  std::cout << "TXManager::HandleAbortParticipant\n";
-}
-auto TXManager::HandleGetParticipant(const cloud::CloudMessage& request,
-                                     cloud::CloudMessage& response) -> void {
-  // TODO(you)
-  std::cout << "TXManager::HandleGetParticipant\n";
-}
-auto TXManager::HandlePutParticipant(const cloud::CloudMessage& request,
-                                     cloud::CloudMessage& response) -> void {
-  // TODO(you)
-  std::cout << "TXManager::HandlePutParticipant\n";
-}
-auto TXManager::HandleDeleteParticipant(const cloud::CloudMessage& request,
-                                        cloud::CloudMessage& response) -> void {
-  // TODO(you)
-  std::cout << "TXManager::HandleDeleteParticipant\n";
 }
 
 }  // namespace cloudlab

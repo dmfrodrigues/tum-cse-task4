@@ -37,6 +37,12 @@ class SocketAddress {
 
   auto string() const -> std::string;
 
+  bool operator<(const SocketAddress &address) const {
+    if(ip_address != address.ip_address)
+      return ip_address < address.ip_address;
+    return port < address.port;
+  }
+
  private:
   IPAddressType type;
   std::string ip_address;
