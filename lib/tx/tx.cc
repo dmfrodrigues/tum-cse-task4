@@ -147,25 +147,32 @@ auto TXManager::HandleCommitCoordinator(const cloud::CloudMessage& request,
 
   const string tx_id = request.tx_id();
 
-  set<SocketAddress> peers;
-  for(const string &key: transactionKeysMap.at(tx_id)){
-    peers.insert(routing->find_peer(key).value());
-  }
   bool success = true;
-  for(const SocketAddress &peerAddress: peers){    
-    cloud::CloudMessage msg{};
-    msg.set_type(cloud::CloudMessage_Type_REQUEST);
-    msg.set_operation(cloud::CloudMessage_Operation_TX_COMMIT);
-    msg.set_tx_id(tx_id);
 
-    Connection con{peerAddress};
-    con.send(msg);
+  if(transactionKeysMap.at(tx_id).size() == 0){
+    success = false;
+  } else {
+    set<SocketAddress> peers;
+    for(const string &key: transactionKeysMap.at(tx_id)){
+      peers.insert(routing->find_peer(key).value());
+    }
+    for(const SocketAddress &peerAddress: peers){    
+      cloud::CloudMessage msg{};
+      msg.set_type(cloud::CloudMessage_Type_REQUEST);
+      msg.set_operation(cloud::CloudMessage_Operation_TX_COMMIT);
+      msg.set_tx_id(tx_id);
 
-    cloud::CloudMessage response{};
-    con.receive(response);
+      Connection con{peerAddress};
+      con.send(msg);
 
-    success &= response.success();
+      cloud::CloudMessage response{};
+      con.receive(response);
+
+      success &= response.success();
+    }
   }
+
+  if(!success) cerr << "COMMIT FAILED" << endl;
 
   transactionKeysMap.erase(tx_id);
 
@@ -180,25 +187,34 @@ auto TXManager::HandleAbortCoordinator(const cloud::CloudMessage& request,
 
   const string tx_id = request.tx_id();
 
-  set<SocketAddress> peers;
-  for(const string &key: transactionKeysMap.at(tx_id)){
-    peers.insert(routing->find_peer(key).value());
-  }
   bool success = true;
-  for(const SocketAddress &peerAddress: peers){    
-    cloud::CloudMessage msg{};
-    msg.set_type(cloud::CloudMessage_Type_REQUEST);
-    msg.set_operation(cloud::CloudMessage_Operation_TX_ABORT);
-    msg.set_tx_id(tx_id);
 
-    Connection con{peerAddress};
-    con.send(msg);
+  if(transactionKeysMap.at(tx_id).size() == 0){
+    success = false;
+  } else {
 
-    cloud::CloudMessage response{};
-    con.receive(response);
+    set<SocketAddress> peers;
+    for(const string &key: transactionKeysMap.at(tx_id)){
+      peers.insert(routing->find_peer(key).value());
+    }
+    
+    for(const SocketAddress &peerAddress: peers){    
+      cloud::CloudMessage msg{};
+      msg.set_type(cloud::CloudMessage_Type_REQUEST);
+      msg.set_operation(cloud::CloudMessage_Operation_TX_ABORT);
+      msg.set_tx_id(tx_id);
 
-    success &= response.success();
+      Connection con{peerAddress};
+      con.send(msg);
+
+      cloud::CloudMessage response{};
+      con.receive(response);
+
+      success &= response.success();
+    }
   }
+
+  if(!success) cerr << "ABORT FAILED" << endl;
 
   transactionKeysMap.erase(tx_id);
 
@@ -235,11 +251,11 @@ auto TXManager::HandleGetCoordinator(const cloud::CloudMessage& request,
     con.receive(resp);
 
     if(!resp.success()){
-      response.set_success(false);
-      response.set_message("ERROR");
       auto *tmp = response.add_kvp();
       tmp->set_key(key);
-      tmp->set_value("ERROR");
+      tmp->set_value("0");
+
+      transactionKeysMap.at(tx_id).clear();
     } else {
       for(const auto &kvp2: resp.kvp()){
         auto *tmp = response.add_kvp();
@@ -280,13 +296,14 @@ auto TXManager::HandlePutCoordinator(const cloud::CloudMessage& request,
     cloud::CloudMessage resp{};
     con.receive(resp);
 
+    if(!resp.success())
+      transactionKeysMap.at(tx_id).clear();
+
     for(const auto &kvp2: resp.kvp()){
       auto tmp = response.add_kvp();
       tmp->set_key(kvp2.key());
-      tmp->set_value(kvp2.value());
+      tmp->set_value("OK");
     }
-    if(!resp.success())
-      response.set_success(false);
   }
 }
 auto TXManager::HandleDeleteCoordinator(const cloud::CloudMessage& request,
@@ -317,13 +334,14 @@ auto TXManager::HandleDeleteCoordinator(const cloud::CloudMessage& request,
     cloud::CloudMessage resp{};
     con.receive(resp);
 
+    if(!resp.success())
+      transactionKeysMap.at(tx_id).clear();
+
     for(const auto &kvp2: resp.kvp()){
       auto tmp = response.add_kvp();
       tmp->set_key(kvp2.key());
-      tmp->set_value(kvp2.value());
+      tmp->set_value("OK");
     }
-    if(!resp.success())
-      response.set_success(false);
   }
 }
 auto TXManager::HandleBeginParticipant(const cloud::CloudMessage& request,
@@ -332,7 +350,7 @@ auto TXManager::HandleBeginParticipant(const cloud::CloudMessage& request,
 
   const string tx_id = request.tx_id();
 
-  assert(transactionKeysMap[tx_id].size() == 0);
+  assert(transactionKeysMap.count(tx_id) == 0);
 
   set<uint32_t> selectedPartitions;
   for(const auto &p: request.kvp()){
@@ -348,6 +366,9 @@ auto TXManager::HandleBeginParticipant(const cloud::CloudMessage& request,
     success &= get<0>(ret);
   }
 
+  if(!success)
+    transactionKeysMap.erase(tx_id);
+
   response.set_type(cloud::CloudMessage_Type_RESPONSE);
   response.set_operation(request.operation());
   response.set_success(success);
@@ -359,15 +380,29 @@ auto TXManager::HandleCommitParticipant(const cloud::CloudMessage& request,
 
   const string tx_id = request.tx_id();
 
-  set<uint32_t> selectedPartitions;
-  for(const string &key: transactionKeysMap.at(tx_id)){
-    selectedPartitions.insert(routing->get_partition(key));
+  if(transactionKeysMap.count(tx_id) == 0){
+    response.set_type(cloud::CloudMessage_Type_RESPONSE);
+    response.set_operation(request.operation());
+    response.set_success(false);
+    response.set_message("ERROR");
+    return;
   }
+  
   bool success = true;
-  for(const int &partitionId: selectedPartitions){
-    KVS &kvs = *partitions->at(partitionId).get();
-    auto ret = kvs.tx_commit(tx_id);
-    success &= get<0>(ret);
+
+  if(transactionKeysMap.count(tx_id) == 0){
+    success = false;
+  } else {
+    set<uint32_t> selectedPartitions;
+    for(const string &key: transactionKeysMap.at(tx_id)){
+      selectedPartitions.insert(routing->get_partition(key));
+    }
+    
+    for(const int &partitionId: selectedPartitions){
+      KVS &kvs = *partitions->at(partitionId).get();
+      auto ret = kvs.tx_commit(tx_id);
+      success &= get<0>(ret);
+    }
   }
 
   transactionKeysMap.erase(tx_id);
@@ -383,15 +418,20 @@ auto TXManager::HandleAbortParticipant(const cloud::CloudMessage& request,
 
   const string tx_id = request.tx_id();
 
-  set<uint32_t> selectedPartitions;
-  for(const string &key: transactionKeysMap.at(tx_id)){
-    selectedPartitions.insert(routing->get_partition(key));
-  }
   bool success = true;
-  for(const int &partitionId: selectedPartitions){
-    KVS &kvs = *partitions->at(partitionId).get();
-    auto ret = kvs.tx_abort(tx_id);
-    success &= get<0>(ret);
+
+  if(transactionKeysMap.count(tx_id) == 0){
+    success = false;
+  } else {
+    set<uint32_t> selectedPartitions;
+    for(const string &key: transactionKeysMap.at(tx_id)){
+      selectedPartitions.insert(routing->get_partition(key));
+    }
+    for(const int &partitionId: selectedPartitions){
+      KVS &kvs = *partitions->at(partitionId).get();
+      auto ret = kvs.tx_abort(tx_id);
+      success &= get<0>(ret);
+    }
   }
 
   transactionKeysMap.erase(tx_id);
@@ -406,6 +446,14 @@ auto TXManager::HandleGetParticipant(const cloud::CloudMessage& request,
   std::cout << "TXManager::HandleGetParticipant\n";
 
   const string tx_id = request.tx_id();
+
+  if(transactionKeysMap.at(tx_id).size() == 0){
+    response.set_type(cloud::CloudMessage_Type_RESPONSE);
+    response.set_operation(request.operation());
+    response.set_success(false);
+    response.set_message("ERROR");
+    return;
+  }
 
   bool success = true;
 
@@ -425,6 +473,12 @@ auto TXManager::HandleGetParticipant(const cloud::CloudMessage& request,
     response_kvp->set_value(value);
   }
 
+  if(!success){
+    for(const string &key: transactionKeysMap.at(tx_id))
+      partitions->at(routing->get_partition(key))->tx_abort(tx_id);
+    transactionKeysMap.at(tx_id).clear();
+  }
+
   response.set_type(cloud::CloudMessage_Type_RESPONSE);
   response.set_operation(request.operation());
   response.set_success(success);
@@ -435,6 +489,14 @@ auto TXManager::HandlePutParticipant(const cloud::CloudMessage& request,
   std::cout << "TXManager::HandlePutParticipant\n";
 
   const string tx_id = request.tx_id();
+
+  if(transactionKeysMap.at(tx_id).size() == 0){
+    response.set_type(cloud::CloudMessage_Type_RESPONSE);
+    response.set_operation(request.operation());
+    response.set_success(false);
+    response.set_message("ERROR");
+    return;
+  }
 
   bool success = true;
 
@@ -453,6 +515,12 @@ auto TXManager::HandlePutParticipant(const cloud::CloudMessage& request,
     response_kvp->set_value(get<1>(ret));
   }
 
+  if(!success){
+    for(const string &key: transactionKeysMap.at(tx_id))
+      partitions->at(routing->get_partition(key))->tx_abort(tx_id);
+    transactionKeysMap.at(tx_id).clear();
+  }
+
   response.set_type(cloud::CloudMessage_Type_RESPONSE);
   response.set_operation(request.operation());
   response.set_success(success);
@@ -463,6 +531,14 @@ auto TXManager::HandleDeleteParticipant(const cloud::CloudMessage& request,
   std::cout << "TXManager::HandleDeleteParticipant\n";
 
   const string tx_id = request.tx_id();
+
+  if(transactionKeysMap.at(tx_id).size() == 0){
+    response.set_type(cloud::CloudMessage_Type_RESPONSE);
+    response.set_operation(request.operation());
+    response.set_success(false);
+    response.set_message("ERROR");
+    return;
+  }
 
   bool success = true;
 
@@ -479,6 +555,12 @@ auto TXManager::HandleDeleteParticipant(const cloud::CloudMessage& request,
       success = false;
     }
     response_kvp->set_value(get<1>(ret));
+  }
+
+  if(!success){
+    for(const string &key: transactionKeysMap.at(tx_id))
+      partitions->at(routing->get_partition(key))->tx_abort(tx_id);
+    transactionKeysMap.at(tx_id).clear();
   }
 
   response.set_type(cloud::CloudMessage_Type_RESPONSE);

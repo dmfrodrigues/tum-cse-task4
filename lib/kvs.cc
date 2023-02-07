@@ -74,36 +74,61 @@ auto KVS::tx_begin(const std::string& txId) -> std::tuple<bool, std::string> {
 }
 
 auto KVS::tx_commit(const std::string& txId) -> std::tuple<bool, std::string> {
-  if(!transactions.count(txId) || transactions.at(txId) == nullptr) return {false, "ERROR"};
-  if(!transactions.at(txId)->Commit().ok()) return {false, "ERROR"};
+  if(!transactions.count(txId)) return {false, "ERROR"};
+  std::tuple<bool, std::string> ret = {true, "OK"};
+  if(!transactions.at(txId)->Commit().ok())
+    ret = {false, "ERROR"};
   delete transactions[txId];
-  transactions.at(txId) = nullptr;
-  return {true, "OK"};
+  transactions.erase(txId);
+  return ret;
 }
 auto KVS::tx_abort(const std::string& txId) -> std::tuple<bool, std::string> {
-  if(!transactions.count(txId) || transactions.at(txId) == nullptr) return {false, "ERROR"};
-  transactions.at(txId)->Rollback();
+  if(!transactions.count(txId)) return {false, "ERROR"};
+  std::tuple<bool, std::string> ret = {true, "OK"};
+  if(!transactions.at(txId)->Rollback().ok())
+    ret = {false, "ERROR"};
   delete transactions.at(txId);
-  transactions.at(txId) = nullptr;
-  return {true, "OK"};
+  transactions.erase(txId);
+  return ret;
 }
 auto KVS::tx_get(const std::string& txId, const std::string& key,
                  std::string& result) -> std::tuple<bool, std::string> {
-  if(!transactions.count(txId)){ std::cerr << "tx_get FAILED AT POINT 1" << std::endl; return {false, "ERROR"}; }
-  if(!transactions.at(txId)->GetForUpdate(rocksdb::ReadOptions(), key, &result).ok()){ std::cerr << "tx_get FAILED AT POINT 2" << std::endl; return {false, "ERROR"}; }
-  return {true, "OK"};
+  if(!transactions.count(txId)) return {false, "ERROR"};
+  std::tuple<bool, std::string> ret = {true, "OK"};
+  auto transaction = transactions.at(txId);
+  if(!transaction->GetForUpdate(rocksdb::ReadOptions(), key, &result).ok()){
+    ret = {false, "ERROR"};
+    transaction->Rollback();
+    delete transaction;
+    transactions.erase(txId);
+  }
+  return ret;
 }
 auto KVS::tx_put(const std::string& txId, const std::string& key,
                  const std::string& value) -> std::tuple<bool, std::string> {
   if(!transactions.count(txId)) return {false, "ERROR"};
-  if(!transactions.at(txId)->Put(key, value).ok()) return {false, "ERROR"};
-  return {true, "OK"};
+  std::tuple<bool, std::string> ret = {true, "OK"};
+  auto transaction = transactions.at(txId);
+  if(!transaction->Put(key, value).ok()){
+    ret = {false, "ERROR"};
+    transaction->Rollback();
+    delete transaction;
+    transactions.erase(txId);
+  }
+  return ret;
 }
 auto KVS::tx_del(const std::string& txId, const std::string& key)
     -> std::tuple<bool, std::string> {
   if(!transactions.count(txId)) return {false, "ERROR"};
-  if(!transactions.at(txId)->Delete(key).ok()) return {false, "ERROR"};
-  return {true, "OK"};
+  std::tuple<bool, std::string> ret = {true, "OK"};
+  auto transaction = transactions.at(txId);
+  if(!transaction->Delete(key).ok()){
+    ret = {false, "ERROR"};
+    transaction->Rollback();
+    delete transaction;
+    transactions.erase(txId);
+  }
+  return ret;
 }
 
 }  // namespace cloudlab
