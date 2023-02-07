@@ -379,8 +379,27 @@ auto TXManager::HandleCommitParticipant(const cloud::CloudMessage& request,
 }
 auto TXManager::HandleAbortParticipant(const cloud::CloudMessage& request,
                                        cloud::CloudMessage& response) -> void {
-  // TODO(you)
   std::cout << "TXManager::HandleAbortParticipant\n";
+
+  const string tx_id = request.tx_id();
+
+  set<uint32_t> selectedPartitions;
+  for(const string &key: transactionKeysMap.at(tx_id)){
+    selectedPartitions.insert(routing->get_partition(key));
+  }
+  bool success = true;
+  for(const int &partitionId: selectedPartitions){
+    KVS &kvs = *partitions->at(partitionId).get();
+    auto ret = kvs.tx_abort(tx_id);
+    success &= get<0>(ret);
+  }
+
+  transactionKeysMap.erase(tx_id);
+
+  response.set_type(cloud::CloudMessage_Type_RESPONSE);
+  response.set_operation(request.operation());
+  response.set_success(success);
+  response.set_message(success ? "OK" : "ERROR");
 }
 auto TXManager::HandleGetParticipant(const cloud::CloudMessage& request,
                                      cloud::CloudMessage& response) -> void {
