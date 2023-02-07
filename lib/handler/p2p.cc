@@ -34,7 +34,7 @@ auto P2PHandler::handle_connection(Connection& con) -> void {
   }
 
   // prevent con with same address
-  std::lock_guard<std::mutex> lck(mtx);
+  // std::lock_guard<std::mutex> lck(mtx);
 
   if (raft->leader()) {
     routing->set_partitions_to_cluster_size();
