@@ -81,9 +81,8 @@ auto KVS::tx_commit(const std::string& txId) -> std::tuple<bool, std::string> {
   return {true, "OK"};
 }
 auto KVS::tx_abort(const std::string& txId) -> std::tuple<bool, std::string> {
-  // TODO(you): check if aborting a RocksDB transaction does not require
-  // something else other than just deleting the transaction.
   if(!transactions.count(txId)) return {false, "ERROR"};
+  transactions.at(txId)->Rollback();
   delete transactions.at(txId);
   transactions.erase(txId);
   return {true, "OK"};
