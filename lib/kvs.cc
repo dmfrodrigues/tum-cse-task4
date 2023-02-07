@@ -14,8 +14,8 @@ KVS::KVS(const std::string& _path) : path{std::filesystem::path(_path)} {
   options.create_if_missing = true;
   rocksdb::TransactionDB* _db;
   rocksdb::TransactionDBOptions txOptions{};
-  txOptions.default_lock_timeout = 1 * 1000;
-  txOptions.transaction_lock_timeout = 1 * 1000;
+  txOptions.default_lock_timeout = 0;
+  txOptions.transaction_lock_timeout = 0;
   bool ok =
       rocksdb::TransactionDB::Open(options, txOptions, path.string(), &_db)
           .ok();
