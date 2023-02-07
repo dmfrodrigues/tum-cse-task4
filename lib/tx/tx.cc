@@ -255,6 +255,8 @@ auto TXManager::HandleGetCoordinator(const cloud::CloudMessage& request,
       tmp->set_key(key);
       tmp->set_value("0");
 
+      cerr << "GET: Transaction " << tx_id << " (GET " << key << ") is set to ZERO!" << endl;
+
       transactionKeysMap.at(tx_id).clear();
     } else {
       for(const auto &kvp2: resp.kvp()){
@@ -366,8 +368,11 @@ auto TXManager::HandleBeginParticipant(const cloud::CloudMessage& request,
     success &= get<0>(ret);
   }
 
-  if(!success)
-    transactionKeysMap.erase(tx_id);
+  if(!success){
+    transactionKeysMap.at(tx_id).clear();
+
+    cerr << "BEGIN: Transaction " << tx_id << " failed" << endl;
+  }
 
   response.set_type(cloud::CloudMessage_Type_RESPONSE);
   response.set_operation(request.operation());
@@ -477,6 +482,8 @@ auto TXManager::HandleGetParticipant(const cloud::CloudMessage& request,
     for(const string &key: transactionKeysMap.at(tx_id))
       partitions->at(routing->get_partition(key))->tx_abort(tx_id);
     transactionKeysMap.at(tx_id).clear();
+
+    cerr << "GET: Transaction " << tx_id << " failed" << endl;
   }
 
   response.set_type(cloud::CloudMessage_Type_RESPONSE);
@@ -519,6 +526,8 @@ auto TXManager::HandlePutParticipant(const cloud::CloudMessage& request,
     for(const string &key: transactionKeysMap.at(tx_id))
       partitions->at(routing->get_partition(key))->tx_abort(tx_id);
     transactionKeysMap.at(tx_id).clear();
+
+    cerr << "PUT: Transaction " << tx_id << " failed" << endl;
   }
 
   response.set_type(cloud::CloudMessage_Type_RESPONSE);
@@ -561,6 +570,8 @@ auto TXManager::HandleDeleteParticipant(const cloud::CloudMessage& request,
     for(const string &key: transactionKeysMap.at(tx_id))
       partitions->at(routing->get_partition(key))->tx_abort(tx_id);
     transactionKeysMap.at(tx_id).clear();
+
+    cerr << "DELETE: Transaction " << tx_id << " failed" << endl;
   }
 
   response.set_type(cloud::CloudMessage_Type_RESPONSE);
