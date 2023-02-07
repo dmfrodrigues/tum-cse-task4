@@ -29,7 +29,7 @@ class TXManager {
   using RoutingPtr = Routing*;
   using PairVec = std::vector<std::pair<std::string, std::string>>;
   using KeySet = std::set<std::string>;
-  using TransactionKeysMap = std::map<std::string, KeySet>;
+  using TransactionKeysMap = std::unordered_map<std::string, KeySet>;
 
   auto SetRole(const TXRole& _val) -> void {
     role = _val;

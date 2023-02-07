@@ -7,6 +7,7 @@
 #include <shared_mutex>
 #include <tuple>
 #include <vector>
+#include <unordered_map>
 
 namespace rocksdb {
 class DB;
@@ -49,7 +50,7 @@ class KVS {
  private:
   std::filesystem::path path;
   std::unique_ptr<rocksdb::TransactionDB> db{};
-  std::map<std::string, TransactionPtr> transactions;
+  std::unordered_map<std::string, TransactionPtr> transactions;
 
   // we use a readers-writer lock s.t. multiple threads may read at the same
   // time while only one thread may modify data in the KVS
