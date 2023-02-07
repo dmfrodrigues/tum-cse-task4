@@ -90,7 +90,7 @@ auto KVS::tx_abort(const std::string& txId) -> std::tuple<bool, std::string> {
 auto KVS::tx_get(const std::string& txId, const std::string& key,
                  std::string& result) -> std::tuple<bool, std::string> {
   if(!transactions.count(txId)) return {false, "ERROR"};
-  if(!transactions.at(txId)->Get(rocksdb::ReadOptions(), key, &result).ok()) return {false, "ERROR"};
+  if(!transactions.at(txId)->GetForUpdate(rocksdb::ReadOptions(), key, &result).ok()) return {false, "ERROR"};
   return {true, "OK"};
 }
 auto KVS::tx_put(const std::string& txId, const std::string& key,
