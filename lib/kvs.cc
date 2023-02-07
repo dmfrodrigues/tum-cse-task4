@@ -93,10 +93,19 @@ auto KVS::tx_abort(const std::string& txId) -> std::tuple<bool, std::string> {
 }
 auto KVS::tx_get(const std::string& txId, const std::string& key,
                  std::string& result) -> std::tuple<bool, std::string> {
-  if(!transactions.count(txId)) return {false, "ERROR"};
+  if(!transactions.count(txId)){
+    std::cerr << "GET: Transaction " << txId << ", transaction object is gone" << std::endl;
+    return {false, "ERROR"};
+  }
   std::tuple<bool, std::string> ret = {true, "OK"};
   auto transaction = transactions.at(txId);
-  if(!transaction->GetForUpdate(rocksdb::ReadOptions(), key, &result).ok()){
+  rocksdb::Status status = transaction->GetForUpdate(rocksdb::ReadOptions(), key, &result);
+  if(!status.ok()){
+    if(status == rocksdb::Status::NotFound()){
+      result = "ERROR";
+      return {true, "OK"};
+    }
+    std::cerr << "Status is not ok nor NotFound, but it is: " << status.ToString() << std::endl;
     ret = {false, "ERROR"};
     transaction->Rollback();
     delete transaction;
