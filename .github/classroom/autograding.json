@@ -18,7 +18,7 @@
             "output": "",
             "comparison": "included",
             "timeout": 10,
-            "points": 6
+            "points": 4
         },
         {
             "name": "Test Concurrent Transactions",
@@ -28,7 +28,7 @@
             "output": "",
             "comparison": "included",
             "timeout": 10,
-            "points": 7
+            "points": 4
         },
         {
             "name": "Test Transaction Rollback",
@@ -38,7 +38,7 @@
             "output": "",
             "comparison": "included",
             "timeout": 10,
-            "points": 6
+            "points": 4
         },
         {
             "name": "Test Transaction Abort",
@@ -48,7 +48,27 @@
             "output": "",
             "comparison": "included",
             "timeout": 10,
-            "points": 6
+            "points": 3
+        },
+        {
+            "name": "Test Concurrent Shared Counters",
+            "setup": "",
+            "run": "timeout -s9 2m python3 tests/tests_clt_run.py 1",
+            "input": "",
+            "output": "",
+            "comparison": "included",
+            "timeout": 10,
+            "points": 5
+        },
+        {
+            "name": "Test Concurrent Non Shared Keys",
+            "setup": "",
+            "run": "timeout -s9 2m python3 tests/tests_clt_run.py 2",
+            "input": "",
+            "output": "",
+            "comparison": "included",
+            "timeout": 10,
+            "points": 5
         }
     ]
 }
