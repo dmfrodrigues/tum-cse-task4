@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include <vector>
 #include <fmt/core.h>
+#include <list>
 
 using namespace std;
 
@@ -102,15 +103,38 @@ auto TXManager::HandleBeginCoordinator(const cloud::CloudMessage& request,
                                        cloud::CloudMessage& response) -> void {
   std::cout << "TXManager::HandleBeginCoordinator\n";
 
-  const string tx_id = request.tx_id();
-  KVS &kvs = *(*partitions)[0];
+  // Send BEGIN TX to all involved peers
+  map<SocketAddress, list<string>> keysPerPeer;
+  for(const auto &kvp: request.kvp()){
+    SocketAddress peerAddress = routing->find_peer(kvp.key()).value();
+    keysPerPeer[peerAddress].push_back(kvp.key());
+  }
+  for(const auto &p: keysPerPeer){
+    const SocketAddress &peerAddress = p.first;
+    
+    cloud::CloudMessage msg{};
+    msg.set_type(cloud::CloudMessage_Type_REQUEST);
+    msg.set_operation(cloud::CloudMessage_Operation_TX_BEGIN);
 
-  auto ret = kvs.tx_begin(tx_id);
+    for(const string &key: p.second){
+      auto *tmp = msg.add_kvp();
+      tmp->set_key(key);
+    }
+
+    Connection con{peerAddress};
+    con.send(msg);
+
+    cloud::CloudMessage response{};
+    con.receive(response);
+
+    assert(response.success());
+    assert(response.message() == "OK");
+  }
 
   response.set_type(cloud::CloudMessage_Type_RESPONSE);
   response.set_operation(request.operation());
-  response.set_success(get<0>(ret));
-  response.set_message(get<1>(ret));
+  response.set_success(true);
+  response.set_message("OK");
 }
 auto TXManager::HandleCommitCoordinator(const cloud::CloudMessage& request,
                                         cloud::CloudMessage& response) -> void {
@@ -224,8 +248,17 @@ auto TXManager::HandleDeleteCoordinator(const cloud::CloudMessage& request,
 }
 auto TXManager::HandleBeginParticipant(const cloud::CloudMessage& request,
                                        cloud::CloudMessage& response) -> void {
-  // TODO(you)
   std::cout << "TXManager::HandleBeginParticipant\n";
+
+  const string tx_id = request.tx_id();
+  KVS &kvs = *(*partitions)[0];
+
+  auto ret = kvs.tx_begin(tx_id);
+
+  response.set_type(cloud::CloudMessage_Type_RESPONSE);
+  response.set_operation(request.operation());
+  response.set_success(get<0>(ret));
+  response.set_message(get<1>(ret));
 }
 auto TXManager::HandleCommitParticipant(const cloud::CloudMessage& request,
                                         cloud::CloudMessage& response) -> void {
