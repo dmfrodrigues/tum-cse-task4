@@ -1,5 +1,7 @@
 # Task 4 - Distributed Transactions (TXs)
 
+[![GitHub Classroom Workflow](https://github.com/dmfrodrigues/tum-cse-task4/actions/workflows/classroom.yml/badge.svg)](https://github.com/dmfrodrigues/tum-cse-task4/actions/workflows/classroom.yml)
+
 In this task, you will extend the distrubuted key-value store by implementing a transaction mechanism on top of it. This will allow to operate on multiple keys in an atomic manner.
 
 ## The 2 Phase Commit Protocol (2PC)
